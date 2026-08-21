@@ -16,12 +16,22 @@
   <body>
     <main class="app-shell">
       <header class="app-header">
-        <span class="status-dot" aria-hidden="true"></span>
+        <button
+          id="connection-toggle"
+          class="status-dot"
+          type="button"
+          aria-label="Show connection controls"
+          aria-expanded="true"
+        ></button>
         <h1>MotionScope</h1>
         <span class="phase-label">3D orientation foundation</span>
       </header>
       <div id="viewport" aria-label="MotionScope 3D viewport">
-        <aside class="test-panel" aria-label="Quaternion test controls">
+        <aside
+          id="connection-panel"
+          class="test-panel"
+          aria-label="MotionScope controls"
+        >
           <section class="connection-section" aria-label="WebSocket connection">
             <div class="connection-heading">
               <span class="panel-label">ESP32 link</span>
@@ -35,6 +45,7 @@
                 name="esp32-host"
                 type="text"
                 inputmode="url"
+                value="192.168.10.207"
                 placeholder="ESP32 IP address"
                 autocomplete="off"
               />
@@ -63,6 +74,9 @@
             >
           </div>
         </aside>
+        <button id="recenter-button" class="recenter-button" type="button">
+          Recenter
+        </button>
       </div>
     </main>
     <script type="module" src="./main.js"></script>

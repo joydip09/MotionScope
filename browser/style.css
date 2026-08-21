@@ -60,11 +60,56 @@ body {
 }
 
 .status-dot {
-  width: 0.55rem;
-  height: 0.55rem;
+  position: relative;
+  width: 0.7rem;
+  height: 0.7rem;
+  flex: 0 0 auto;
+  border: 0;
   border-radius: 50%;
+  padding: 0;
+  background: var(--muted);
+  box-shadow: none;
+  cursor: pointer;
+}
+
+.status-dot[data-state="connecting"] {
+  background: #e6b85c;
+}
+
+.status-dot[data-state="connected"] {
   background: var(--accent);
-  box-shadow: 0 0 1rem rgba(184, 239, 117, 0.8);
+  box-shadow: 0 0 0.7rem rgba(184, 239, 117, 0.55);
+}
+
+.status-dot[data-state="connected"]::before,
+.status-dot[data-state="connected"]::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  content: "";
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.7);
+  animation: connection-wave 2.4s ease-out infinite;
+}
+
+.status-dot[data-state="connected"]::after {
+  animation-delay: 1.2s;
+}
+
+@keyframes connection-wave {
+  0% {
+    opacity: 0.75;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(3.2);
+  }
 }
 
 .phase-label {
@@ -96,6 +141,10 @@ body {
   backdrop-filter: blur(12px);
 }
 
+.test-panel.is-hidden {
+  display: none;
+}
+
 .connection-section {
   display: grid;
   gap: 0.65rem;
@@ -118,6 +167,10 @@ body {
 
 #connection-state[data-state="connected"] {
   color: var(--accent);
+}
+
+#connection-state[data-state="connecting"] {
+  color: #e6b85c;
 }
 
 #connection-form {
@@ -153,6 +206,28 @@ body {
   font:
     500 0.72rem "DM Mono",
     monospace;
+}
+
+.recenter-button {
+  position: absolute;
+  right: 1.5rem;
+  bottom: 1.5rem;
+  z-index: 2;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 0.42rem 0.62rem;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font:
+    500 0.72rem "DM Mono",
+    monospace;
+}
+
+.recenter-button:hover,
+.recenter-button:focus-visible {
+  background: rgba(184, 239, 117, 0.12);
+  outline: none;
 }
 
 .live-quaternion {
@@ -224,5 +299,10 @@ body {
     top: 1rem;
     left: 1rem;
     width: calc(100% - 2rem);
+  }
+
+  .recenter-button {
+    right: 1rem;
+    bottom: 1rem;
   }
 }

@@ -5,7 +5,7 @@ const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b1512);
 
 const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 100);
-camera.position.set(3.4, 2.5, 4.8);
+camera.position.set(4.1, 2.9, 5.2);
 camera.lookAt(0, 0, 0);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -26,85 +26,219 @@ rimLight.position.set(-4, 2, -3);
 scene.add(rimLight);
 
 const device = new THREE.Group();
-const body = new THREE.Mesh(
-  new THREE.BoxGeometry(2.4, 0.42, 1.55),
+const bodyMaterial = new THREE.MeshStandardMaterial({
+  color: 0x6f9368,
+  metalness: 0.32,
+  roughness: 0.38,
+});
+const darkMaterial = new THREE.MeshStandardMaterial({
+  color: 0x16251f,
+  metalness: 0.18,
+  roughness: 0.6,
+});
+const glassMaterial = new THREE.MeshStandardMaterial({
+  color: 0x5d91a0,
+  metalness: 0.15,
+  roughness: 0.22,
+});
+const wheelMaterial = new THREE.MeshStandardMaterial({
+  color: 0x101614,
+  metalness: 0.2,
+  roughness: 0.68,
+});
+const hubMaterial = new THREE.MeshStandardMaterial({
+  color: 0xb8ef75,
+  metalness: 0.55,
+  roughness: 0.25,
+});
+const headlightMaterial = new THREE.MeshStandardMaterial({
+  color: 0xf4e6a3,
+  emissive: 0x6b5a1d,
+  emissiveIntensity: 0.8,
+});
+const taillightMaterial = new THREE.MeshStandardMaterial({
+  color: 0xe66b62,
+  emissive: 0x56130f,
+  emissiveIntensity: 0.7,
+});
+
+const chassis = new THREE.Mesh(
+  new THREE.BoxGeometry(2.65, 0.42, 1.42),
+  bodyMaterial,
+);
+chassis.position.y = 0.02;
+chassis.castShadow = true;
+chassis.receiveShadow = true;
+device.add(chassis);
+
+const hood = new THREE.Mesh(
+  new THREE.BoxGeometry(0.92, 0.16, 1.26),
+  bodyMaterial,
+);
+hood.position.set(0.76, 0.31, 0);
+hood.castShadow = true;
+device.add(hood);
+
+const cabin = new THREE.Mesh(
+  new THREE.BoxGeometry(1.2, 0.62, 1.18),
   new THREE.MeshStandardMaterial({
-    color: 0x6f9368,
-    metalness: 0.32,
-    roughness: 0.38,
+    color: 0x3e6656,
+    metalness: 0.25,
+    roughness: 0.32,
   }),
 );
-body.castShadow = true;
-body.receiveShadow = true;
-device.add(body);
+cabin.position.set(-0.18, 0.48, 0);
+cabin.castShadow = true;
+device.add(cabin);
 
-const board = new THREE.Mesh(
-  new THREE.BoxGeometry(1.82, 0.05, 1.08),
-  new THREE.MeshStandardMaterial({
-    color: 0x16251f,
-    metalness: 0.18,
-    roughness: 0.6,
-  }),
+const windshield = new THREE.Mesh(
+  new THREE.BoxGeometry(0.06, 0.38, 1.02),
+  glassMaterial,
 );
-board.position.y = 0.24;
-board.castShadow = true;
-device.add(board);
+windshield.position.set(0.41, 0.52, 0);
+windshield.rotation.z = -0.18;
+device.add(windshield);
 
-const sensor = new THREE.Mesh(
-  new THREE.BoxGeometry(0.48, 0.18, 0.48),
-  new THREE.MeshStandardMaterial({
-    color: 0xb8ef75,
-    metalness: 0.15,
-    roughness: 0.3,
-  }),
+const rearWindow = new THREE.Mesh(
+  new THREE.BoxGeometry(0.06, 0.34, 1.02),
+  glassMaterial,
 );
-sensor.position.set(0, 0.36, 0);
-sensor.castShadow = true;
-device.add(sensor);
+rearWindow.position.set(-0.77, 0.53, 0);
+rearWindow.rotation.z = 0.18;
+device.add(rearWindow);
 
-const axisMarker = new THREE.Mesh(
-  new THREE.BoxGeometry(0.72, 0.07, 0.07),
-  new THREE.MeshStandardMaterial({ color: 0xffa45b, emissive: 0x3d1d08 }),
+const roof = new THREE.Mesh(
+  new THREE.BoxGeometry(0.92, 0.08, 1.1),
+  darkMaterial,
 );
-axisMarker.position.set(0.72, 0.39, 0);
-device.add(axisMarker);
+roof.position.set(-0.18, 0.82, 0);
+roof.castShadow = true;
+device.add(roof);
+
+const wheelGeometry = new THREE.CylinderGeometry(0.34, 0.34, 0.18, 24);
+const hubGeometry = new THREE.CylinderGeometry(0.13, 0.13, 0.19, 16);
+
+function addWheel(x, z) {
+  const wheel = new THREE.Mesh(wheelGeometry, wheelMaterial);
+  wheel.rotation.x = Math.PI / 2;
+  wheel.position.set(x, -0.28, z);
+  wheel.castShadow = true;
+  device.add(wheel);
+
+  const hub = new THREE.Mesh(hubGeometry, hubMaterial);
+  hub.rotation.x = Math.PI / 2;
+  hub.position.set(x, -0.28, z + (z > 0 ? 0.1 : -0.1));
+  hub.castShadow = true;
+  device.add(hub);
+}
+
+addWheel(0.86, 0.76);
+addWheel(0.86, -0.76);
+addWheel(-0.86, 0.76);
+addWheel(-0.86, -0.76);
+
+function addLight(x, z, material) {
+  const light = new THREE.Mesh(
+    new THREE.BoxGeometry(0.12, 0.13, 0.3),
+    material,
+  );
+  light.position.set(x, 0.12, z);
+  light.castShadow = true;
+  device.add(light);
+}
+
+addLight(1.36, 0.43, headlightMaterial);
+addLight(1.36, -0.43, headlightMaterial);
+addLight(-1.36, 0.43, taillightMaterial);
+addLight(-1.36, -0.43, taillightMaterial);
+
+const frontBadge = new THREE.Mesh(
+  new THREE.BoxGeometry(0.05, 0.13, 0.22),
+  hubMaterial,
+);
+frontBadge.position.set(1.39, 0.32, 0);
+device.add(frontBadge);
 
 scene.add(device);
 
-const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(5.5, 64),
-  new THREE.MeshStandardMaterial({
-    color: 0x0d1b16,
-    roughness: 0.9,
-    metalness: 0.05,
-  }),
-);
-floor.rotation.x = -Math.PI / 2;
-floor.position.y = -0.62;
-floor.receiveShadow = true;
-scene.add(floor);
+const ambientGrid = new THREE.GridHelper(12, 24, 0x6fae78, 0x315b3d);
+ambientGrid.rotation.x = Math.PI / 2;
+ambientGrid.position.set(0, 0, -2.3);
+ambientGrid.material.transparent = true;
+ambientGrid.material.opacity = 0.12;
+ambientGrid.material.depthWrite = false;
+scene.add(ambientGrid);
 
-const grid = new THREE.GridHelper(10, 20, 0x345343, 0x1a2b24);
-grid.position.y = -0.6;
-grid.material.transparent = true;
-grid.material.opacity = 0.34;
-scene.add(grid);
+const ambientSpotGeometry = new THREE.PlaneGeometry(0.16, 0.16);
+const ambientSpots = [];
+
+function resetAmbientSpot(spot, initial = false) {
+  spot.duration = 1.6 + Math.random() * 2.6;
+  spot.age = initial ? Math.random() * spot.duration : 0;
+  spot.mesh.position.set(
+    -5.4 + Math.random() * 10.8,
+    -3.1 + Math.random() * 6.2,
+    -2.2,
+  );
+}
+
+for (let index = 0; index < 14; index += 1) {
+  const spot = new THREE.Mesh(
+    ambientSpotGeometry,
+    new THREE.MeshBasicMaterial({
+      color: 0x9ee68c,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    }),
+  );
+  const state = { mesh: spot, age: 0, duration: 2 };
+  resetAmbientSpot(state, true);
+  ambientSpots.push(state);
+  scene.add(spot);
+}
 
 const orientationStatus = document.querySelector("#orientation-status");
 const orientationButtons = document.querySelectorAll("[data-orientation]");
 const connectionForm = document.querySelector("#connection-form");
 const esp32HostInput = document.querySelector("#esp32-host");
 const connectionState = document.querySelector("#connection-state");
+const connectionToggle = document.querySelector("#connection-toggle");
+const connectionPanel = document.querySelector("#connection-panel");
 const quaternionReadout = document.querySelector("#quaternion-readout");
+const recenterButton = document.querySelector("#recenter-button");
 const queryHost = new URLSearchParams(window.location.search).get("esp32");
 let socket;
 let reconnectTimer;
 let latestQuaternion = { w: 1, x: 0, y: 0, z: 0 };
 const liveThreeQuaternion = new THREE.Quaternion();
+const referenceQuaternion = new THREE.Quaternion();
+const relativeQuaternion = new THREE.Quaternion();
+const renderedQuaternion = new THREE.Quaternion();
 let liveMode = false;
+const LIVE_SMOOTHING = 0.18;
+const sensorToThreeFrame = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  Math.PI / 2,
+);
+const threeToSensorFrame = sensorToThreeFrame.clone().invert();
+const threeDirectionCorrection = new THREE.Quaternion().setFromAxisAngle(
+  new THREE.Vector3(1, 0, 0),
+  Math.PI,
+);
+const inverseDirectionCorrection = threeDirectionCorrection.clone().invert();
+const sensorQuaternionScratch = new THREE.Quaternion();
 
-function mapEsp32QuaternionToThree({ w, x, y, z }, target) {
-  target.set(x, y, z, w).normalize();
+function mapSensorQuaternionToThreeQuaternion({ w, x, y, z }, target) {
+  sensorQuaternionScratch.set(x, y, z, w).normalize();
+  target
+    .copy(sensorToThreeFrame)
+    .multiply(sensorQuaternionScratch)
+    .multiply(threeToSensorFrame)
+    .premultiply(threeDirectionCorrection)
+    .multiply(inverseDirectionCorrection)
+    .normalize();
 }
 
 function createTestQuaternion(axis, angle) {
@@ -122,7 +256,13 @@ const testOrientations = {
 };
 
 function applyOrientation(orientation, label) {
-  mapEsp32QuaternionToThree(orientation, device.quaternion);
+  device.quaternion.set(
+    orientation.x,
+    orientation.y,
+    orientation.z,
+    orientation.w,
+  );
+  device.quaternion.normalize();
   orientationButtons.forEach((button) => {
     button.setAttribute(
       "aria-pressed",
@@ -149,9 +289,34 @@ function selectLiveOrientation() {
   orientationStatus.value = "Live ESP32";
 }
 
+function updateRelativeOrientation() {
+  relativeQuaternion.copy(referenceQuaternion).invert();
+  relativeQuaternion.multiply(liveThreeQuaternion).normalize();
+}
+
+function recenterOrientation() {
+  if (!liveMode) {
+    return;
+  }
+
+  mapSensorQuaternionToThreeQuaternion(latestQuaternion, referenceQuaternion);
+  updateRelativeOrientation();
+}
+
 function setConnectionState(state) {
   connectionState.dataset.state = state;
   connectionState.textContent = `WebSocket: ${state.toUpperCase()}`;
+  connectionToggle.dataset.state = state;
+  if (state === "connected") {
+    setConnectionPanelVisible(false);
+  } else {
+    setConnectionPanelVisible(true);
+  }
+}
+
+function setConnectionPanelVisible(visible) {
+  connectionPanel.classList.toggle("is-hidden", !visible);
+  connectionToggle.setAttribute("aria-expanded", String(visible));
 }
 
 function updateQuaternionReadout() {
@@ -202,7 +367,11 @@ function connectWebSocket() {
       latestQuaternion.x = packet.x;
       latestQuaternion.y = packet.y;
       latestQuaternion.z = packet.z;
-      mapEsp32QuaternionToThree(latestQuaternion, liveThreeQuaternion);
+      mapSensorQuaternionToThreeQuaternion(
+        latestQuaternion,
+        liveThreeQuaternion,
+      );
+      updateRelativeOrientation();
       updateQuaternionReadout();
     } catch {
       return;
@@ -232,6 +401,18 @@ connectionForm.addEventListener("submit", (event) => {
   connectWebSocket();
 });
 
+connectionToggle.addEventListener("click", () => {
+  setConnectionPanelVisible(connectionPanel.classList.contains("is-hidden"));
+});
+
+viewport.addEventListener("click", (event) => {
+  if (!connectionPanel.contains(event.target)) {
+    setConnectionPanelVisible(false);
+  }
+});
+
+recenterButton.addEventListener("click", recenterOrientation);
+
 window.addEventListener("keydown", (event) => {
   const keyMap = { 1: "identity", 2: "x", 3: "y", 4: "z" };
   const label = keyMap[event.key];
@@ -248,9 +429,31 @@ function resize() {
   renderer.setSize(width, height, false);
 }
 
-function animate() {
+function updateAmbientSpots(deltaTime) {
+  ambientSpots.forEach((spot) => {
+    spot.age += deltaTime;
+    if (spot.age >= spot.duration) {
+      resetAmbientSpot(spot);
+    }
+
+    const progress = spot.age / spot.duration;
+    spot.mesh.material.opacity = 0.075 * Math.sin(Math.PI * progress);
+  });
+}
+
+let previousAnimationTime;
+
+function animate(time) {
+  const deltaTime =
+    previousAnimationTime === undefined
+      ? 0
+      : Math.min((time - previousAnimationTime) / 1000, 0.1);
+  previousAnimationTime = time;
+  updateAmbientSpots(deltaTime);
+
   if (liveMode) {
-    device.quaternion.copy(liveThreeQuaternion);
+    renderedQuaternion.slerp(relativeQuaternion, LIVE_SMOOTHING);
+    device.quaternion.copy(renderedQuaternion);
   }
   renderer.render(scene, camera);
   requestAnimationFrame(animate);
@@ -259,6 +462,8 @@ function animate() {
 window.addEventListener("resize", resize);
 resize();
 selectOrientation("identity");
+renderedQuaternion.identity();
+referenceQuaternion.identity();
 if (queryHost) {
   esp32HostInput.value = queryHost;
   connectWebSocket();
