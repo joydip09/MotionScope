@@ -4,295 +4,244 @@
 #include <Wire.h>
 #include <math.h>
 
-
 #define I2C_SDA 8
 #define I2C_SCL 9
 #define MPU_ADDRESS 0x68
-
-#define WARMUP_DURATION_MS 120000
-#define CALIBRATION_DURATION_MS 10000
-
-#define SAMPLE_INTERVAL_US 10000
-#define REPORT_INTERVAL_MS 500
-
-#define FILTER_COUNT 5
-
-const float alphaValues[FILTER_COUNT] = {0.90f, 0.95f, 0.98f, 0.99f, 0.995f};
+#define ACCEL_CORRECTION_GAIN 0.05f
+#define GRAVITY_ACCELERATION 9.80665f
+#define ACCELERATION_TOLERANCE 2.0f
 
 Adafruit_MPU6050 mpu;
 
-float gyroBiasX = 0.0f;
-float gyroBiasY = 0.0f;
-float gyroBiasZ = 0.0f;
+struct Quaternion {
+  float w;
+  float x;
+  float y;
+  float z;
+};
 
-float gyroRoll = 0.0f;
-float gyroPitch = 0.0f;
+Quaternion identityQuaternion() { return {1.0f, 0.0f, 0.0f, 0.0f}; }
 
-float fusedRoll[FILTER_COUNT] = {};
-float fusedPitch[FILTER_COUNT] = {};
+Quaternion multiplyQuaternions(const Quaternion &left,
+                               const Quaternion &right) {
+  return {
+      left.w * right.w - left.x * right.x - left.y * right.y - left.z * right.z,
+      left.w * right.x + left.x * right.w + left.y * right.z - left.z * right.y,
+      left.w * right.y - left.x * right.z + left.y * right.w + left.z * right.x,
+      left.w * right.z + left.x * right.y - left.y * right.x +
+          left.z * right.w};
+}
 
-unsigned long lastSampleMicros = 0;
-unsigned long lastReportMillis = 0;
+void normalizeQuaternion(Quaternion &quaternion) {
+  const float magnitude =
+      sqrtf(quaternion.w * quaternion.w + quaternion.x * quaternion.x +
+            quaternion.y * quaternion.y + quaternion.z * quaternion.z);
 
-void warmUpSensor() {
-  Serial.println("===== SENSOR WARM-UP =====");
-  Serial.println("Keep the MPU6050 completely stationary.");
-  Serial.println("Waiting 2 minutes for thermal stabilization.");
-  Serial.println();
-
-  unsigned long startTime = millis();
-  unsigned long lastReport = startTime;
-
-  while (millis() - startTime < WARMUP_DURATION_MS) {
-    unsigned long elapsed = millis() - startTime;
-
-    if (elapsed >= (lastReport - startTime) + 10000) {
-      sensors_event_t accel;
-      sensors_event_t gyro;
-      sensors_event_t temperature;
-
-      mpu.getEvent(&accel, &gyro, &temperature);
-
-      unsigned long remaining = (WARMUP_DURATION_MS - elapsed) / 1000;
-
-      Serial.print("Warm-up remaining: ");
-      Serial.print(remaining);
-      Serial.print(" s | Temperature: ");
-      Serial.print(temperature.temperature, 2);
-      Serial.println(" C");
-
-      lastReport = millis();
-    }
-
-    delay(10);
+  if (magnitude <= 0.0f) {
+    quaternion = identityQuaternion();
+    return;
   }
 
-  Serial.println();
-  Serial.println("Warm-up complete.");
-  Serial.println();
+  quaternion.w /= magnitude;
+  quaternion.x /= magnitude;
+  quaternion.y /= magnitude;
+  quaternion.z /= magnitude;
 }
 
-void calibrateGyroscope() {
-  double sumX = 0.0;
-  double sumY = 0.0;
-  double sumZ = 0.0;
+Quaternion orientation = identityQuaternion();
+unsigned long previousUpdateMicros;
 
-  unsigned long sampleCount = 0;
-  unsigned long startTime = millis();
-  unsigned long nextSample = micros();
+Quaternion conjugateQuaternion(const Quaternion &quaternion) {
+  return {quaternion.w, -quaternion.x, -quaternion.y, -quaternion.z};
+}
 
-  Serial.println("===== GYROSCOPE CALIBRATION =====");
-  Serial.println("Keep the MPU6050 completely stationary.");
-  Serial.println("Calibration duration: 10 seconds.");
-  Serial.println();
+void quaternionToEulerDegrees(const Quaternion &quaternion, float &roll,
+                              float &pitch, float &yaw) {
+  const float rollRadians =
+      atan2f(2.0f * (quaternion.w * quaternion.x + quaternion.y * quaternion.z),
+             1.0f - 2.0f * (quaternion.x * quaternion.x +
+                            quaternion.y * quaternion.y));
+  const float pitchInput =
+      2.0f * (quaternion.w * quaternion.y - quaternion.z * quaternion.x);
+  const float pitchRadians = asinf(constrain(pitchInput, -1.0f, 1.0f));
+  const float yawRadians =
+      atan2f(2.0f * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
+             1.0f - 2.0f * (quaternion.y * quaternion.y +
+                            quaternion.z * quaternion.z));
+  const float radiansToDegrees = 180.0f / PI;
 
-  while (millis() - startTime < CALIBRATION_DURATION_MS) {
-    while ((long)(micros() - nextSample) < 0) {
-      yield();
-    }
+  roll = rollRadians * radiansToDegrees;
+  pitch = pitchRadians * radiansToDegrees;
+  yaw = yawRadians * radiansToDegrees;
+}
 
-    nextSample += SAMPLE_INTERVAL_US;
+void calculateExpectedBodyUp(float &expectedX, float &expectedY,
+                             float &expectedZ) {
+  const Quaternion worldUp = {0.0f, 0.0f, 0.0f, 1.0f};
+  const Quaternion expectedBodyUp = multiplyQuaternions(
+      multiplyQuaternions(conjugateQuaternion(orientation), worldUp),
+      orientation);
 
-    sensors_event_t accel;
-    sensors_event_t gyro;
-    sensors_event_t temperature;
+  expectedX = expectedBodyUp.x;
+  expectedY = expectedBodyUp.y;
+  expectedZ = expectedBodyUp.z;
+}
 
-    mpu.getEvent(&accel, &gyro, &temperature);
+bool applyAccelerometerCorrection(const sensors_event_t &accel,
+                                  float &accelerationMagnitude,
+                                  float &measuredX, float &measuredY,
+                                  float &measuredZ, float &expectedX,
+                                  float &expectedY, float &expectedZ) {
+  const float accelerationX = accel.acceleration.x;
+  const float accelerationY = accel.acceleration.y;
+  const float accelerationZ = accel.acceleration.z;
+  accelerationMagnitude =
+      sqrtf(accelerationX * accelerationX + accelerationY * accelerationY +
+            accelerationZ * accelerationZ);
 
-    sumX += gyro.gyro.x;
-    sumY += gyro.gyro.y;
-    sumZ += gyro.gyro.z;
-
-    sampleCount++;
+  if (fabsf(accelerationMagnitude - GRAVITY_ACCELERATION) >
+      ACCELERATION_TOLERANCE) {
+    calculateExpectedBodyUp(expectedX, expectedY, expectedZ);
+    measuredX = 0.0f;
+    measuredY = 0.0f;
+    measuredZ = 0.0f;
+    return false;
   }
 
-  gyroBiasX = sumX / sampleCount;
-  gyroBiasY = sumY / sampleCount;
-  gyroBiasZ = sumZ / sampleCount;
+  const float measuredMagnitudeInverse = 1.0f / accelerationMagnitude;
+  measuredX = accelerationX * measuredMagnitudeInverse;
+  measuredY = accelerationY * measuredMagnitudeInverse;
+  measuredZ = accelerationZ * measuredMagnitudeInverse;
+  calculateExpectedBodyUp(expectedX, expectedY, expectedZ);
 
-  Serial.println();
-  Serial.println("Calibration complete.");
-  Serial.println();
+  const float correctionX = expectedY * measuredZ - expectedZ * measuredY;
+  const float correctionY = expectedZ * measuredX - expectedX * measuredZ;
+  const float correctionZ = expectedX * measuredY - expectedY * measuredX;
 
-  Serial.print("Samples: ");
-  Serial.println(sampleCount);
-
-  Serial.print("Gyro Bias X: ");
-  Serial.print(gyroBiasX, 7);
-  Serial.println(" rad/s");
-
-  Serial.print("Gyro Bias Y: ");
-  Serial.print(gyroBiasY, 7);
-  Serial.println(" rad/s");
-
-  Serial.print("Gyro Bias Z: ");
-  Serial.print(gyroBiasZ, 7);
-  Serial.println(" rad/s");
-
-  Serial.println();
-}
-
-void calculateAccelerometerAngles(float ax, float ay, float az, float &roll,
-                                  float &pitch) {
-  roll = atan2(ay, az);
-
-  pitch = atan2(-ax, sqrt(ay * ay + az * az));
-}
-
-void printHeader() {
-  Serial.println();
-  Serial.println("===== FILTER COMPARISON =====");
-  Serial.println();
-
-  Serial.println("Roll values:");
-
-  Serial.println("Gyro | Accel | A0.90 | A0.95 | A0.98 | A0.99 | A0.995");
-
-  Serial.println("-------------------------------------------------------");
-
-  Serial.println("Pitch values:");
-
-  Serial.println("Gyro | Accel | A0.90 | A0.95 | A0.98 | A0.99 | A0.995");
-
-  Serial.println("-------------------------------------------------------");
+  const Quaternion correction = {1.0f,
+                                 0.5f * ACCEL_CORRECTION_GAIN * correctionX,
+                                 0.5f * ACCEL_CORRECTION_GAIN * correctionY,
+                                 0.5f * ACCEL_CORRECTION_GAIN * correctionZ};
+  orientation = multiplyQuaternions(orientation, correction);
+  normalizeQuaternion(orientation);
+  return true;
 }
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
   delay(1000);
-
-  Serial.println();
-  Serial.println("===== MOTIONSCOPE PHASE 5B =====");
-  Serial.println("Complementary Filter Alpha Experiment");
-  Serial.println();
 
   Wire.begin(I2C_SDA, I2C_SCL);
 
   if (!mpu.begin(MPU_ADDRESS, &Wire)) {
-    Serial.println("MPU6050 initialization failed!");
-
+    Serial.println("MPU6050 FAILED");
     while (true) {
       delay(1000);
     }
   }
 
-  Serial.println("MPU6050 initialized successfully.");
+  Serial.println("MPU6050 OK");
 
-  mpu.setAccelerometerRange(MPU6050_RANGE_2_G);
-  mpu.setGyroRange(MPU6050_RANGE_250_DEG);
+  mpu.setAccelerometerRange(MPU6050_RANGE_8_G);
+  mpu.setGyroRange(MPU6050_RANGE_500_DEG);
   mpu.setFilterBandwidth(MPU6050_BAND_21_HZ);
 
-  Serial.println("Accelerometer: ±2G");
-  Serial.println("Gyroscope: ±250 deg/s");
-  Serial.println("Filter: 21 Hz");
+  delay(500);
 
-  Serial.println();
-  Serial.println("Alpha values:");
-
-  for (int i = 0; i < FILTER_COUNT; i++) {
-    Serial.print("α");
-    Serial.print(i);
-    Serial.print(": ");
-    Serial.println(alphaValues[i], 3);
-  }
-
-  Serial.println();
-
-  warmUpSensor();
-  calibrateGyroscope();
-
-  gyroRoll = 0.0f;
-  gyroPitch = 0.0f;
-
-  for (int i = 0; i < FILTER_COUNT; i++) {
-    fusedRoll[i] = 0.0f;
-    fusedPitch[i] = 0.0f;
-  }
-
-  lastSampleMicros = micros();
-  lastReportMillis = millis();
-
-  printHeader();
-
-  Serial.println();
-  Serial.println("Keep the sensor stationary first.");
-  Serial.println("Then perform the same three-axis rotations.");
-  Serial.println();
+  Serial.println("ax,ay,az,gx,gy,gz");
+  Serial.println("Q,w,x,y,z");
+  Serial.println("A,ax,ay,az,amag");
+  Serial.println("G,gx,gy,gz");
+  Serial.println("C,accepted");
+  Serial.println("V,mx,my,mz,ex,ey,ez");
+  previousUpdateMicros = micros();
 }
 
 void loop() {
-  unsigned long nowMicros = micros();
-
-  if ((long)(nowMicros - lastSampleMicros) < SAMPLE_INTERVAL_US) {
-    return;
-  }
-
-  float dt = (nowMicros - lastSampleMicros) / 1000000.0f;
-
-  lastSampleMicros = nowMicros;
-
   sensors_event_t accel;
   sensors_event_t gyro;
-  sensors_event_t temperature;
+  sensors_event_t temp;
 
-  mpu.getEvent(&accel, &gyro, &temperature);
+  mpu.getEvent(&accel, &gyro, &temp);
 
-  float correctedX = gyro.gyro.x - gyroBiasX;
+  const unsigned long currentUpdateMicros = micros();
+  const float deltaTime =
+      (currentUpdateMicros - previousUpdateMicros) * 0.000001f;
+  previousUpdateMicros = currentUpdateMicros;
 
-  float correctedY = gyro.gyro.y - gyroBiasY;
+  const Quaternion angularVelocity = {0.0f, gyro.gyro.x, gyro.gyro.y,
+                                      gyro.gyro.z};
+  const Quaternion quaternionDerivative =
+      multiplyQuaternions(orientation, angularVelocity);
 
-  float accelRoll;
-  float accelPitch;
+  orientation.w += 0.5f * quaternionDerivative.w * deltaTime;
+  orientation.x += 0.5f * quaternionDerivative.x * deltaTime;
+  orientation.y += 0.5f * quaternionDerivative.y * deltaTime;
+  orientation.z += 0.5f * quaternionDerivative.z * deltaTime;
+  normalizeQuaternion(orientation);
+  float accelerationMagnitude;
+  float measuredX;
+  float measuredY;
+  float measuredZ;
+  float expectedX;
+  float expectedY;
+  float expectedZ;
+  const bool correctionAccepted = applyAccelerometerCorrection(
+      accel, accelerationMagnitude, measuredX, measuredY, measuredZ, expectedX,
+      expectedY, expectedZ);
 
-  calculateAccelerometerAngles(accel.acceleration.x, accel.acceleration.y,
-                               accel.acceleration.z, accelRoll, accelPitch);
+  Serial.print("A,");
+  Serial.print(accel.acceleration.x, 3);
+  Serial.print(",");
+  Serial.print(accel.acceleration.y, 3);
+  Serial.print(",");
+  Serial.print(accel.acceleration.z, 3);
+  Serial.print(",");
+  Serial.println(accelerationMagnitude, 3);
 
-  gyroRoll += correctedX * dt;
-  gyroPitch += correctedY * dt;
+  Serial.print("G,");
+  Serial.print(gyro.gyro.x, 3);
+  Serial.print(",");
+  Serial.print(gyro.gyro.y, 3);
+  Serial.print(",");
+  Serial.println(gyro.gyro.z, 3);
 
-  for (int i = 0; i < FILTER_COUNT; i++) {
-    float alpha = alphaValues[i];
+  Serial.print("C,");
+  Serial.println(correctionAccepted ? "accepted" : "rejected");
 
-    fusedRoll[i] =
-        alpha * (fusedRoll[i] + correctedX * dt) + (1.0f - alpha) * accelRoll;
+  Serial.print("V,");
+  Serial.print(measuredX, 3);
+  Serial.print(",");
+  Serial.print(measuredY, 3);
+  Serial.print(",");
+  Serial.print(measuredZ, 3);
+  Serial.print(",");
+  Serial.print(expectedX, 3);
+  Serial.print(",");
+  Serial.print(expectedY, 3);
+  Serial.print(",");
+  Serial.println(expectedZ, 3);
 
-    fusedPitch[i] =
-        alpha * (fusedPitch[i] + correctedY * dt) + (1.0f - alpha) * accelPitch;
-  }
+  Serial.print("Q,");
+  Serial.print(orientation.w, 3);
+  Serial.print(",");
+  Serial.print(orientation.x, 3);
+  Serial.print(",");
+  Serial.print(orientation.y, 3);
+  Serial.print(",");
+  Serial.println(orientation.z, 3);
 
-  if (millis() - lastReportMillis >= REPORT_INTERVAL_MS) {
-    float gyroRollDeg = gyroRoll * 180.0f / PI;
+  float roll;
+  float pitch;
+  float yaw;
+  quaternionToEulerDegrees(orientation, roll, pitch, yaw);
 
-    float gyroPitchDeg = gyroPitch * 180.0f / PI;
+  Serial.print("E,");
+  Serial.print(roll, 2);
+  Serial.print(",");
+  Serial.print(pitch, 2);
+  Serial.print(",");
+  Serial.println(yaw, 2);
 
-    float accelRollDeg = accelRoll * 180.0f / PI;
-
-    float accelPitchDeg = accelPitch * 180.0f / PI;
-
-    Serial.print("R ");
-    Serial.print(gyroRollDeg, 2);
-    Serial.print(" | ");
-    Serial.print(accelRollDeg, 2);
-
-    for (int i = 0; i < FILTER_COUNT; i++) {
-      Serial.print(" | ");
-      Serial.print(fusedRoll[i] * 180.0f / PI, 2);
-    }
-
-    Serial.println();
-
-    Serial.print("P ");
-    Serial.print(gyroPitchDeg, 2);
-    Serial.print(" | ");
-    Serial.print(accelPitchDeg, 2);
-
-    for (int i = 0; i < FILTER_COUNT; i++) {
-      Serial.print(" | ");
-      Serial.print(fusedPitch[i] * 180.0f / PI, 2);
-    }
-
-    Serial.println();
-
-    lastReportMillis = millis();
-  }
+  delay(100);
 }
