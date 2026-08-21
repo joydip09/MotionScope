@@ -609,7 +609,7 @@ screenshots/photos later.
 
 **Hardware**
 
-![Hardware] (docs/images/hardware.jpeg)
+![Hardware](docs/images/hardware.jpeg)
 
 ### Live connection
 
