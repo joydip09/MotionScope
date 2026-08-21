@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MotionScope | 3D Orientation</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <span class="status-dot" aria-hidden="true"></span>
+        <h1>MotionScope</h1>
+        <span class="phase-label">3D orientation foundation</span>
+      </header>
+      <div id="viewport" aria-label="MotionScope 3D viewport">
+        <aside class="test-panel" aria-label="Quaternion test controls">
+          <section class="connection-section" aria-label="WebSocket connection">
+            <div class="connection-heading">
+              <span class="panel-label">ESP32 link</span>
+              <span id="connection-state" data-state="disconnected"
+                >WebSocket: DISCONNECTED</span
+              >
+            </div>
+            <form id="connection-form">
+              <input
+                id="esp32-host"
+                name="esp32-host"
+                type="text"
+                inputmode="url"
+                placeholder="ESP32 IP address"
+                autocomplete="off"
+              />
+              <button type="submit">Connect</button>
+            </form>
+          </section>
+          <span class="panel-label">Test orientation</span>
+          <div class="test-controls">
+            <button type="button" data-orientation="live">Live ESP32</button>
+            <button
+              type="button"
+              data-orientation="identity"
+              aria-pressed="true"
+            >
+              Identity
+            </button>
+            <button type="button" data-orientation="x">X +90°</button>
+            <button type="button" data-orientation="y">Y +90°</button>
+            <button type="button" data-orientation="z">Z +90°</button>
+          </div>
+          <output id="orientation-status">Identity</output>
+          <div class="live-quaternion" aria-live="polite">
+            <span class="panel-label">Live quaternion</span>
+            <output id="quaternion-readout"
+              >W: 1.000000 | X: 0.000000 | Y: 0.000000 | Z: 0.000000</output
+            >
+          </div>
+        </aside>
+      </div>
+    </main>
+    <script type="module" src="./main.js"></script>
+  </body>
+</html>

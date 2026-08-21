@@ -1,8 +1,12 @@
 #include <Adafruit_MPU6050.h>
 #include <Adafruit_Sensor.h>
 #include <Arduino.h>
+#include <secrets.h>
+#include <WebSocketsServer.h>
+#include <WiFi.h>
 #include <Wire.h>
 #include <math.h>
+
 
 #define I2C_SDA 8
 #define I2C_SCL 9
@@ -10,8 +14,12 @@
 #define ACCEL_CORRECTION_GAIN 0.05f
 #define GRAVITY_ACCELERATION 9.80665f
 #define ACCELERATION_TOLERANCE 2.0f
+#define WEBSOCKET_PORT 81
+#define WIFI_CONNECTION_TIMEOUT_MS 15000
+#define ORIENTATION_TRANSMISSION_INTERVAL_MS 50
 
 Adafruit_MPU6050 mpu;
+WebSocketsServer webSocket(WEBSOCKET_PORT);
 
 struct Quaternion {
   float w;
@@ -50,6 +58,53 @@ void normalizeQuaternion(Quaternion &quaternion) {
 
 Quaternion orientation = identityQuaternion();
 unsigned long previousUpdateMicros;
+unsigned long previousTransmissionMillis;
+
+void webSocketEvent(uint8_t clientNumber, WStype_t type, uint8_t *payload,
+                    size_t length) {
+  (void)payload;
+  (void)length;
+
+  if (type == WStype_CONNECTED) {
+    Serial.print("WebSocket client connected: ");
+    Serial.println(clientNumber);
+  } else if (type == WStype_DISCONNECTED) {
+    Serial.print("WebSocket client disconnected: ");
+    Serial.println(clientNumber);
+  }
+}
+
+void connectToWiFi() {
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+
+  const unsigned long connectionStart = millis();
+  while (WiFi.status() != WL_CONNECTED &&
+         millis() - connectionStart < WIFI_CONNECTION_TIMEOUT_MS) {
+    delay(250);
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("Wi-Fi connected");
+    Serial.print("IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("Wi-Fi connection failed");
+  }
+}
+
+void sendOrientation() {
+  String packet = "{\"type\":\"orientation\",\"w\":";
+  packet += String(orientation.w, 6);
+  packet += ",\"x\":";
+  packet += String(orientation.x, 6);
+  packet += ",\"y\":";
+  packet += String(orientation.y, 6);
+  packet += ",\"z\":";
+  packet += String(orientation.z, 6);
+  packet += "}";
+  webSocket.broadcastTXT(packet);
+}
 
 Quaternion conjugateQuaternion(const Quaternion &quaternion) {
   return {quaternion.w, -quaternion.x, -quaternion.y, -quaternion.z};
@@ -148,6 +203,11 @@ void setup() {
 
   delay(500);
 
+  connectToWiFi();
+  webSocket.begin();
+  webSocket.onEvent(webSocketEvent);
+  Serial.println("WebSocket server started on port 81");
+
   Serial.println("ax,ay,az,gx,gy,gz");
   Serial.println("Q,w,x,y,z");
   Serial.println("A,ax,ay,az,amag");
@@ -155,9 +215,12 @@ void setup() {
   Serial.println("C,accepted");
   Serial.println("V,mx,my,mz,ex,ey,ez");
   previousUpdateMicros = micros();
+  previousTransmissionMillis = millis();
 }
 
 void loop() {
+  webSocket.loop();
+
   sensors_event_t accel;
   sensors_event_t gyro;
   sensors_event_t temp;
@@ -243,5 +306,12 @@ void loop() {
   Serial.print(",");
   Serial.println(yaw, 2);
 
-  delay(100);
+  const unsigned long currentMillis = millis();
+  if (currentMillis - previousTransmissionMillis >=
+      ORIENTATION_TRANSMISSION_INTERVAL_MS) {
+    previousTransmissionMillis = currentMillis;
+    sendOrientation();
+  }
+
+  delay(50);
 }
