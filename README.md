@@ -480,6 +480,22 @@ The PC serves the browser files through a local HTTP server.
 The ESP32 handles sensor acquisition, orientation estimation, and
 WebSocket communication.
 
+### Start the Browser Server
+
+From the MotionScope project root, start the Python HTTP server:
+
+```bash
+python -m http.server 8001
+```
+
+Then open the browser visualization at:
+
+```text
+http://127.0.0.1:8001/browser/
+```
+
+Keep the server running while using the browser interface.
+
 ---
 
 ## Current Working State
