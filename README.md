@@ -607,63 +607,21 @@ screenshots/photos later.
 
 ### Hardware
 
-```{=html}
-<!-- IMAGE: Final ESP32-S3 + MPU6050 hardware -->
-```
+**Hardware**
 
-```{=html}
-<!-- Suggested filename: docs/images/final-hardware.jpg -->
-```
-
-### Calibration
-
-```{=html}
-<!-- IMAGE: Calibration/testing setup -->
-```
-
-```{=html}
-<!-- Suggested filename: docs/images/calibration-setup.jpg -->
-```
-
-### Orientation estimation
-
-```{=html}
-<!-- IMAGE: Quaternion/Euler serial output -->
-```
-
-```{=html}
-<!-- Suggested filename: docs/images/quaternion-output.jpg -->
-```
-
-### Three.js foundation
-
-```{=html}
-<!-- IMAGE: Initial 3D scene -->
-```
-
-```{=html}
-<!-- Suggested filename: docs/images/threejs-scene.jpg -->
-```
+![Hardware] (docs/images/hardware.jpeg)
 
 ### Live connection
 
-```{=html}
-<!-- IMAGE: Browser connected to ESP32 -->
-```
+**Live Conncetion Interface**
 
-```{=html}
-<!-- Suggested filename: docs/images/live-connection.jpg -->
-```
+![Live Connection Interface](docs/images/live-connection.png)
 
 ### Final visualization
 
-```{=html}
-<!-- IMAGE: Final MotionScope interface with floating vehicle -->
-```
+**Final MotionScope Interface**
 
-```{=html}
-<!-- Suggested filename: docs/images/final-visualization.jpg -->
-```
+![Final MotionScope Interface](docs/images/final-ui.png)
 
 ---
 
